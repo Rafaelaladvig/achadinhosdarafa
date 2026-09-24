@@ -13,7 +13,28 @@ function node(tag,cls,text){const el=document.createElement(tag);if(cls)el.class
 async function api(path,options={}){
  if(!configured())throw Error('A conexão com a loja ainda está sendo configurada.');
  const response=await fetch(cfg.supabaseUrl.replace(/\/$/,'')+path,{...options,headers:{apikey:cfg.supabaseKey,...(session?{Authorization:'Bearer '+session.access_token}:{}),...(options.body&&!(options.body instanceof File)?{'Content-Type':'application/json'}:{}),...options.headers}});
- if(!response.ok){if(response.status===401)throw Error('Sua sessão expirou ou o acesso não foi autorizado. Entre novamente.');if(response.status===403)throw Error('Esta conta não tem permissão para alterar a loja.');throw Error('Não foi possível concluir. Confira sua conexão e tente novamente.');}
+ if(!response.ok){
+  const detail=await response.json().catch(()=>({}));
+  const code=String(detail.error_code||detail.code||detail.error||'');
+  const errors={
+   invalid_credentials:'E-mail ou senha incorretos. Use a senha da conta cadastrada neste projeto Supabase; ela pode ser diferente da senha do seu e-mail ou do painel do Supabase.',
+   email_not_confirmed:'O e-mail desta conta ainda não foi confirmado no Supabase.',
+   user_banned:'Esta conta está bloqueada no Supabase. Confira o cadastro em Authentication → Users.',
+   over_request_rate_limit:'Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de tentar novamente.',
+   request_rate_limit:'Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de tentar novamente.',
+   captcha_failed:'A verificação de segurança do login não foi concluída. Informe este erro para ajustarmos o painel.',
+   signup_disabled:'O cadastro de novas contas está desativado. Entre com uma conta existente.',
+   PGRST202:'A função de autorização do painel não foi encontrada no banco. Confira a configuração SQL.',
+   PGRST205:'A tabela de produtos não foi encontrada no banco. Confira a configuração SQL.',
+   '42501':'O banco negou acesso a esta operação. Confira as permissões da administradora.'
+  };
+  if(errors[code])throw Error(errors[code]);
+  if(response.status===429)throw Error('Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.');
+  if(response.status===401)throw Error('Sua sessão expirou ou o acesso não foi autorizado. Entre novamente.');
+  if(response.status===403)throw Error('Esta conta não tem permissão para alterar a loja.');
+  const stage=path.startsWith('/auth/')?'login':path.includes('/rpc/')?'autorização':'dados da loja';
+  throw Error('Não foi possível concluir a etapa de '+stage+' (HTTP '+response.status+( /^[a-zA-Z0-9_]+$/.test(code)?'; '+code:'')+'). Envie esta mensagem para verificarmos.');
+ }
  if(response.status===204)return null;const text=await response.text();return text?JSON.parse(text):null;
 }
 document.querySelectorAll('[data-whatsapp]').forEach(el=>{el.href=cfg.whatsapp});
